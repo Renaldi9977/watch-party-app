@@ -4,8 +4,7 @@
   "description": "Watch videos together with voice chat - Nonton bareng dengan voice chat",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node server.js"
   },
   "keywords": ["watch-party", "voice-chat", "webrtc", "youtube-sync", "socket.io"],
   "author": "Renaldi9977",
