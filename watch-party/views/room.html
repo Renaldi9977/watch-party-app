@@ -60,13 +60,10 @@
           <div class="voice-status-bar">
             <div class="voice-status-text">
               <span class="status-indicator" id="statusIndicator"></span>
-              <span id="voiceStatusText">Klik tombol mic untuk aktifkan voice</span>
+              <span id="voiceStatusText">Voice tidak aktif</span>
             </div>
             <div class="voice-controls">
-              <button id="speakerBtn" class="voice-btn" title="Pilih Speaker">
-                🔊
-              </button>
-              <button id="micBtn" class="voice-btn" title="Microphone">
+              <button id="micBtn" class="voice-btn" title="Aktifkan Voice Chat">
                 🎤
               </button>
             </div>
@@ -88,30 +85,35 @@
     </main>
   </div>
   
+  <!-- Audio Element untuk Voice Chat -->
+  <audio id="voiceAudio" autoplay style="display:none;"></audio>
+  
   <!-- YouTube IFrame API -->
   <script src="https://www.youtube.com/iframe_api"></script>
   <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
   
   <script>
+    // ==========================================
+    // KONFIGURASI AWAL
+    // ==========================================
+    
     // Check login
     const username = localStorage.getItem('username');
     if (!username) {
       window.location.href = '/login';
     }
     
-    // Get room code from URL
     const roomCode = window.location.pathname.split('/').pop();
     
     // State
     let socket = null;
     let player = null;
     let isHost = false;
-    let isMuted = true; // Start muted, user must click to enable
+    let isMuted = false;
     let localStream = null;
-    let selectedSpeakerId = null;
+    let voiceEnabled = false;
     const peerConnections = {};
-    const voiceAudioElements = {};
     const roomUsers = [];
     
     // Elements
@@ -129,60 +131,17 @@
     const chatFormEl = document.getElementById('chatForm');
     const chatInputEl = document.getElementById('chatInput');
     const micBtnEl = document.getElementById('micBtn');
-    const speakerBtnEl = document.getElementById('speakerBtn');
+    const voiceAudioEl = document.getElementById('voiceAudio');
     
     // ==========================================
-    // AUDIO OUTPUT SELECTION (SPEAKER vs EARPIECE)
-    // ==========================================
-    
-    // Select audio output device (speaker)
-    async function selectSpeaker() {
-      try {
-        // Check if selectAudioOutput is supported
-        if (!navigator.mediaDevices || !navigator.mediaDevices.selectAudioOutput) {
-          console.log('selectAudioOutput not supported');
-          voiceStatusTextEl.textContent = 'Gunakan pengaturan HP untuk pilih speaker';
-          return null;
-        }
-        
-        // Prompt user to select audio output device
-        const device = await navigator.mediaDevices.selectAudioOutput();
-        selectedSpeakerId = device.deviceId;
-        
-        console.log('Selected speaker:', device.deviceId, device.label);
-        voiceStatusTextEl.textContent = `Speaker: ${device.label || 'Default'}`;
-        
-        // Apply to all existing audio elements
-        Object.values(voiceAudioElements).forEach(audio => {
-          if (audio.setSinkId) {
-            audio.setSinkId(selectedSpeakerId).catch(e => console.log('setSinkId failed:', e));
-          }
-        });
-        
-        // Store preference
-        localStorage.setItem('preferredSpeaker', selectedSpeakerId);
-        
-        return device.deviceId;
-      } catch (err) {
-        console.log('Speaker selection cancelled or failed:', err);
-        return null;
-      }
-    }
-    
-    // Speaker button - let user choose output device
-    speakerBtnEl.addEventListener('click', async () => {
-      await selectSpeaker();
-    });
-    
-    // ==========================================
-    // INITIALIZE SOCKET
+    // SOCKET.IO
     // ==========================================
     
     socket = io();
     
     socket.on('connect', () => {
       socket.emit('join-room', { roomCode, username });
-      // Don't auto-init voice chat, wait for user click
+      statusIndicatorEl.classList.add('connecting');
     });
     
     socket.on('room-joined', (data) => {
@@ -201,12 +160,6 @@
       if (data.videoUrl) {
         loadYouTubeVideo(data.videoUrl, data.videoState);
       }
-      
-      // Try to restore preferred speaker
-      const savedSpeaker = localStorage.getItem('preferredSpeaker');
-      if (savedSpeaker) {
-        selectedSpeakerId = savedSpeaker;
-      }
     });
     
     socket.on('user-joined', (data) => {
@@ -216,9 +169,8 @@
     
     socket.on('user-left', (data) => {
       updateUsersList(data.users);
-      if (voiceAudioElements[data.socketId]) {
-        voiceAudioElements[data.socketId].remove();
-        delete voiceAudioElements[data.socketId];
+      if (peerConnections[data.username]) {
+        delete peerConnections[data.username];
       }
       addChatMessage(null, `${data.username} keluar`, true);
     });
@@ -252,14 +204,14 @@
       addChatMessage(data.username, data.message, false, data.time);
     });
     
-    // Voice chat signaling
+    // Voice signaling
     socket.on('voice-user-joined', async ({ socketId, username: remoteUsername }) => {
-      if (socketId === socket.id || !localStream) return;
+      if (socketId === socket.id || !voiceEnabled) return;
       await createPeerConnection(socketId, remoteUsername, true);
     });
     
     socket.on('voice-offer', async ({ socketId, offer }) => {
-      if (!localStream) return;
+      if (!voiceEnabled) return;
       await handleOffer(socketId, offer);
     });
     
@@ -272,7 +224,7 @@
     });
     
     // ==========================================
-    // YOUTUBE PLAYER
+    // YOUTUBE PLAYER - Media Audio (Speaker)
     // ==========================================
     
     function onYouTubeIframeAPIReady() {
@@ -293,6 +245,7 @@
         return;
       }
       
+      // YouTube Player - akan otomatis menggunakan MEDIA audio (speaker)
       player = new YT.Player('youtubePlayer', {
         height: '100%',
         width: '100%',
@@ -302,8 +255,7 @@
           'controls': isHost ? 1 : 0,
           'disablekb': isHost ? 0 : 1,
           'modestbranding': 1,
-          'rel': 0,
-          'iv_load_policy': 3
+          'rel': 0
         },
         events: {
           'onReady': (event) => {
@@ -374,7 +326,7 @@
       return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // Video input (host only)
+    // Video controls
     document.getElementById('loadVideoBtn').addEventListener('click', () => {
       const url = document.getElementById('videoUrl').value.trim();
       if (url) {
@@ -455,12 +407,13 @@
       voiceGridEl.innerHTML = users.map(u => {
         const initial = u.charAt(0).toUpperCase();
         const isYou = u === username;
+        const hasVoice = voiceEnabled && isYou;
         return `
           <div class="voice-user-card ${isYou ? 'you' : ''}" id="voice-${u}">
             <div class="voice-avatar">
               ${initial}
-              <span class="mic-status ${isMuted && isYou ? 'muted' : ''}" id="mic-${u}">
-                ${isMuted && isYou ? '🔇' : '🎤'}
+              <span class="mic-status ${isMuted && hasVoice ? 'muted' : ''}" id="mic-${u}">
+                ${isMuted && hasVoice ? '🔇' : (hasVoice ? '🎤' : '❌')}
               </span>
             </div>
             <span class="voice-name ${isYou ? 'you' : ''}">${isYou ? 'Kamu' : u}</span>
@@ -470,7 +423,9 @@
     }
     
     // ==========================================
-    // VOICE CHAT - User controlled, not auto
+    // VOICE CHAT - Communication Audio (Earpiece)
+    // ⚠️ PERINGATAN: Mengaktifkan voice chat akan mengubah
+    // routing audio KE SELURUH HALAMAN ke mode telepon (earpiece)
     // ==========================================
     
     async function initVoiceChat() {
@@ -485,22 +440,20 @@
           video: false 
         });
         
+        voiceEnabled = true;
         isMuted = false;
+        
         micBtnEl.classList.add('active');
         micBtnEl.textContent = '🎤';
         
         voiceStatusTextEl.textContent = 'Voice aktif';
         statusIndicatorEl.classList.remove('connecting', 'error');
         
-        // Notify server we want voice
+        // Notify server
         socket.emit('voice-join', { roomCode, username });
         
-        // Update mic status
-        const micStatus = document.getElementById(`mic-${username}`);
-        if (micStatus) {
-          micStatus.classList.remove('muted');
-          micStatus.textContent = '🎤';
-        }
+        // Update users list
+        updateUsersList(roomUsers);
         
       } catch (err) {
         console.error('Microphone access denied:', err);
@@ -509,25 +462,26 @@
       }
     }
     
-    // Create audio element for voice chat with proper routing
-    function createVoiceAudio(socketId, stream) {
-      const audio = document.createElement('audio');
-      audio.id = `voice-${socketId}`;
-      audio.srcObject = stream;
-      audio.autoplay = true;
-      audio.volume = 1.0;
-      
-      // Apply selected speaker if available
-      if (selectedSpeakerId && audio.setSinkId) {
-        audio.setSinkId(selectedSpeakerId).catch(e => {
-          console.log('Could not set sinkId for voice audio:', e);
-        });
+    function stopVoiceChat() {
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
       }
       
-      voiceAudioElements[socketId] = audio;
-      document.body.appendChild(audio);
+      // Close all peer connections
+      Object.values(peerConnections).forEach(pc => pc.close());
+      Object.keys(peerConnections).forEach(key => delete peerConnections[key]);
       
-      return audio;
+      voiceEnabled = false;
+      isMuted = true;
+      
+      micBtnEl.classList.remove('active');
+      micBtnEl.textContent = '🎤';
+      
+      voiceStatusTextEl.textContent = 'Voice tidak aktif';
+      statusIndicatorEl.classList.remove('error');
+      
+      updateUsersList(roomUsers);
     }
     
     async function createPeerConnection(remoteSocketId, remoteUsername, isInitiator) {
@@ -548,7 +502,9 @@
       }
       
       pc.ontrack = (event) => {
-        createVoiceAudio(remoteSocketId, event.streams[0]);
+        // Play remote audio
+        voiceAudioEl.srcObject = event.streams[0];
+        voiceAudioEl.play().catch(() => {});
       };
       
       pc.onicecandidate = (event) => {
@@ -583,7 +539,8 @@
       });
       
       pc.ontrack = (event) => {
-        createVoiceAudio(remoteSocketId, event.streams[0]);
+        voiceAudioEl.srcObject = event.streams[0];
+        voiceAudioEl.play().catch(() => {});
       };
       
       pc.onicecandidate = (event) => {
@@ -615,26 +572,22 @@
       }
     }
     
-    // Mic button - toggle voice chat on/off
+    // Mic button - toggle voice chat
     micBtnEl.addEventListener('click', async () => {
-      if (!localStream) {
-        // Initialize voice chat
+      if (!voiceEnabled) {
+        // Enable voice chat
+        // ⚠️ PERINGATAN: Ini akan mengubah audio routing ke mode telepon
         await initVoiceChat();
       } else {
         // Toggle mute
-        const audioTrack = localStream.getAudioTracks()[0];
+        const audioTrack = localStream?.getAudioTracks()[0];
         if (audioTrack) {
           isMuted = !isMuted;
           audioTrack.enabled = !isMuted;
           micBtnEl.classList.toggle('muted', isMuted);
-          micBtnEl.classList.toggle('active', !isMuted);
           micBtnEl.textContent = isMuted ? '🔇' : '🎤';
           
-          const micStatus = document.getElementById(`mic-${username}`);
-          if (micStatus) {
-            micStatus.classList.toggle('muted', isMuted);
-            micStatus.textContent = isMuted ? '🔇' : '🎤';
-          }
+          updateUsersList(roomUsers);
         }
       }
     });
@@ -643,34 +596,14 @@
     // CLEANUP
     // ==========================================
     
-    // Leave room
     document.getElementById('leaveBtn').addEventListener('click', () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-      Object.values(voiceAudioElements).forEach(audio => audio.remove());
+      stopVoiceChat();
       socket.disconnect();
       window.location.href = '/dashboard';
     });
     
-    // Cleanup on page unload
     window.addEventListener('beforeunload', () => {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-      }
-      Object.values(voiceAudioElements).forEach(audio => audio.remove());
-    });
-    
-    // Handle visibility change to prevent audio bugs
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        // Page is visible again, ensure audio is working
-        Object.values(voiceAudioElements).forEach(audio => {
-          if (audio.paused) {
-            audio.play().catch(() => {});
-          }
-        });
-      }
+      stopVoiceChat();
     });
   </script>
 </body>
