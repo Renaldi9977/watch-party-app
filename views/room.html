@@ -5,82 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Watch Party - Room</title>
   <link rel="stylesheet" href="/css/style.css">
-  <style>
-    /* Audio Controls */
-    .audio-controls {
-      display: flex;
-      gap: 16px;
-      padding: 10px 12px;
-      background: var(--bg-card);
-      border-radius: var(--radius-sm);
-      margin-top: 10px;
-    }
-    
-    .audio-control {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1;
-    }
-    
-    .audio-control label {
-      font-size: 10px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .audio-control input[type="range"] {
-      width: 100%;
-      height: 4px;
-      -webkit-appearance: none;
-      background: var(--border);
-      border-radius: 2px;
-      cursor: pointer;
-    }
-    
-    .audio-control input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 14px;
-      height: 14px;
-      background: var(--primary);
-      border-radius: 50%;
-      cursor: pointer;
-    }
-    
-    .volume-value {
-      font-size: 10px;
-      color: var(--primary-light);
-      text-align: right;
-    }
-    
-    /* Speaker icon */
-    .speaker-btn {
-      width: 32px;
-      height: 32px;
-      border: none;
-      border-radius: 50%;
-      background: var(--bg);
-      color: var(--text);
-      cursor: pointer;
-      font-size: 14px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      border: 1px solid var(--border);
-    }
-    
-    .speaker-btn:hover {
-      background: var(--primary);
-      border-color: var(--primary);
-    }
-    
-    .speaker-btn.muted {
-      background: var(--danger);
-      border-color: var(--danger);
-    }
-  </style>
 </head>
 <body>
   <div class="room-container">
@@ -112,7 +36,7 @@
         </div>
         
         <div id="videoInput" class="video-input hidden">
-          <input type="text" id="videoUrl" class="input-large" placeholder="Paste link YouTube di sini...">
+          <input type="text" id="videoUrl" placeholder="Paste link YouTube di sini...">
           <button id="loadVideoBtn" class="btn btn-primary">Load</button>
         </div>
         
@@ -139,26 +63,9 @@
               <span id="voiceStatusText">Voice aktif</span>
             </div>
             <div class="voice-controls">
-              <button id="speakerBtn" class="speaker-btn" title="Speaker Voice Chat">
-                🔊
-              </button>
               <button id="micBtn" class="voice-btn active" title="Microphone">
                 🎤
               </button>
-            </div>
-          </div>
-          
-          <!-- Audio Volume Controls -->
-          <div class="audio-controls">
-            <div class="audio-control">
-              <label>📺 Video</label>
-              <input type="range" id="videoVolume" min="0" max="100" value="100">
-              <span class="volume-value" id="videoVolumeValue">100%</span>
-            </div>
-            <div class="audio-control">
-              <label>📞 Voice</label>
-              <input type="range" id="voiceVolume" min="0" max="100" value="100">
-              <span class="volume-value" id="voiceVolumeValue">100%</span>
             </div>
           </div>
         </section>
@@ -198,10 +105,9 @@
     let player = null;
     let isHost = false;
     let isMuted = false;
-    let isVoiceMuted = false;
     let localStream = null;
     const peerConnections = {};
-    const voiceAudioElements = {}; // Store voice chat audio elements separately
+    const voiceAudioElements = {};
     const roomUsers = [];
     
     // Elements
@@ -219,9 +125,6 @@
     const chatFormEl = document.getElementById('chatForm');
     const chatInputEl = document.getElementById('chatInput');
     const micBtnEl = document.getElementById('micBtn');
-    const speakerBtnEl = document.getElementById('speakerBtn');
-    const videoVolumeEl = document.getElementById('videoVolume');
-    const voiceVolumeEl = document.getElementById('voiceVolume');
     
     // Initialize Socket.IO
     socket = io();
@@ -347,8 +250,6 @@
         },
         events: {
           'onReady': (event) => {
-            // Set initial volume from slider
-            player.setVolume(videoVolumeEl.value);
             if (state && state.currentTime > 0) {
               player.seekTo(state.currentTime);
               if (state.playing) {
@@ -452,37 +353,6 @@
       });
     });
     
-    // Video volume control
-    videoVolumeEl.addEventListener('input', (e) => {
-      const volume = e.target.value;
-      document.getElementById('videoVolumeValue').textContent = volume + '%';
-      if (player && player.setVolume) {
-        player.setVolume(volume);
-      }
-    });
-    
-    // Voice chat volume control - controls all voice audio elements
-    voiceVolumeEl.addEventListener('input', (e) => {
-      const volume = e.target.value;
-      document.getElementById('voiceVolumeValue').textContent = volume + '%';
-      const volumeFloat = volume / 100;
-      Object.values(voiceAudioElements).forEach(audio => {
-        audio.volume = volumeFloat;
-      });
-    });
-    
-    // Speaker button - mute/unmute voice chat audio
-    speakerBtnEl.addEventListener('click', () => {
-      isVoiceMuted = !isVoiceMuted;
-      speakerBtnEl.classList.toggle('muted', isVoiceMuted);
-      speakerBtnEl.textContent = isVoiceMuted ? '🔇' : '🔊';
-      
-      // Mute all voice audio elements
-      Object.values(voiceAudioElements).forEach(audio => {
-        audio.muted = isVoiceMuted;
-      });
-    });
-    
     // Chat
     chatFormEl.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -537,14 +407,17 @@
       }).join('');
     }
     
-    // Voice Chat with WebRTC
+    // Voice Chat with WebRTC - Optimized for clear audio
     async function initVoiceChat() {
       try {
+        // Request high quality audio with noise suppression
         localStream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 1
           }, 
           video: false 
         });
@@ -565,19 +438,7 @@
       audio.id = `voice-audio-${socketId}`;
       audio.srcObject = stream;
       audio.autoplay = true;
-      audio.muted = isVoiceMuted; // Apply current mute state
-      audio.volume = voiceVolumeEl.value / 100; // Apply current volume
-      
-      // Try to set output device (if supported)
-      if (audio.setSinkId) {
-        // Try to use communication device (earpiece) for voice chat
-        navigator.mediaDevices.enumerateDevices().then(devices => {
-          const audioOutput = devices.find(d => d.kind === 'audiooutput' && d.deviceId !== 'default');
-          if (audioOutput && audio.setSinkId) {
-            audio.setSinkId(audioOutput.deviceId).catch(() => {});
-          }
-        });
-      }
+      audio.volume = 1.0;
       
       // Store in separate object for voice chat audio
       voiceAudioElements[socketId] = audio;
