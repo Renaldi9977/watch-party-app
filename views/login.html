@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Watch Party - Login</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -105,7 +105,7 @@
         const data = await res.json();
         
         if (data.success) {
-          errorEl.style.color = '#4ade80';
+          errorEl.style.color = '#22c55e';
           errorEl.textContent = 'Registrasi berhasil! Silakan login.';
           document.querySelector('[data-tab="login"]').click();
           document.getElementById('loginUsername').value = username;

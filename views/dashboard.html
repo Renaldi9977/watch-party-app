@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Watch Party - Dashboard</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -15,7 +15,7 @@
       </div>
       <div class="user-info">
         <span id="welcomeUser">Halo, User</span>
-        <button id="logoutBtn" class="btn btn-small">Keluar</button>
+        <button id="logoutBtn" class="btn btn-small btn-secondary">Keluar</button>
       </div>
     </header>
     
@@ -23,10 +23,10 @@
       <section class="room-actions">
         <div class="action-card">
           <h2>Buat Room Baru</h2>
-          <p>Buat room baru dan undang teman untuk nonton bareng</p>
+          <p>Buat room dan undang teman nonton bareng</p>
           <form id="createRoomForm">
             <input type="text" id="roomName" placeholder="Nama room" required>
-            <button type="submit" class="btn btn-primary">Buat Room</button>
+            <button type="submit" class="btn btn-primary">Buat</button>
           </form>
         </div>
         
@@ -34,8 +34,8 @@
           <h2>Join Room</h2>
           <p>Masukkan kode room untuk bergabung</p>
           <form id="joinRoomForm">
-            <input type="text" id="roomCode" placeholder="Kode room (contoh: ABC123)" required maxlength="6">
-            <button type="submit" class="btn btn-secondary">Gabung</button>
+            <input type="text" id="roomCode" placeholder="Kode room" required maxlength="6" style="text-transform: uppercase;">
+            <button type="submit" class="btn btn-primary">Gabung</button>
           </form>
         </div>
       </section>
@@ -131,7 +131,7 @@
               <span class="room-code">${room.code}</span>
               <span class="room-users">${room.users} user</span>
             </div>
-            <button class="btn btn-small" onclick="joinRoom('${room.code}')">Gabung</button>
+            <button class="btn btn-small btn-primary" onclick="joinRoom('${room.code}')">Gabung</button>
           </div>
         `).join('');
       } catch (err) {

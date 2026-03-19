@@ -2,12 +2,13 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Watch Party - Room</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div class="room-container">
+    <!-- Header -->
     <header class="room-header">
       <div class="room-title">
         <a href="/dashboard" class="back-btn">←</a>
@@ -18,15 +19,14 @@
       </div>
       <div class="room-controls">
         <span id="hostBadge" class="host-badge hidden">HOST</span>
-        <button id="micBtn" class="btn-icon" title="Microphone">
-          <span class="mic-icon">🎤</span>
-        </button>
         <button id="leaveBtn" class="btn btn-small btn-danger">Keluar</button>
       </div>
     </header>
     
+    <!-- Main Content -->
     <main class="room-main">
-      <div class="video-section">
+      <!-- Video Section -->
+      <section class="video-section">
         <div id="videoContainer" class="video-container">
           <div id="playerPlaceholder" class="player-placeholder">
             <p>🎬 Menunggu video dari host...</p>
@@ -47,31 +47,40 @@
           </span>
           <input type="range" id="seekBar" class="seek-bar" min="0" max="100" value="0">
         </div>
-      </div>
+      </section>
       
-      <div class="sidebar">
-        <div class="voice-section">
-          <h3>Voice Chat</h3>
-          <div id="voiceStatus" class="voice-status">
-            <span class="status-dot"></span>
-            <span>Connecting...</span>
+      <!-- Content Area: Voice + Chat -->
+      <div class="content-area">
+        <!-- Voice Users Section -->
+        <section class="voice-section">
+          <h3>📹 Di Room (<span id="userCount">0</span>)</h3>
+          <div id="voiceGrid" class="voice-grid"></div>
+          
+          <!-- Voice Status Bar -->
+          <div class="voice-status-bar">
+            <div class="voice-status-text">
+              <span class="status-indicator" id="statusIndicator"></span>
+              <span id="voiceStatusText">Voice aktif</span>
+            </div>
+            <div class="voice-controls">
+              <button id="micBtn" class="voice-btn active" title="Microphone">
+                🎤
+              </button>
+            </div>
           </div>
-          <div id="voiceUsers" class="voice-users"></div>
-        </div>
+        </section>
         
-        <div class="users-section">
-          <h3>Di Room (<span id="userCount">0</span>)</h3>
-          <ul id="userList" class="user-list"></ul>
-        </div>
-        
-        <div class="chat-section">
-          <h3>Chat</h3>
+        <!-- Chat Section -->
+        <section class="chat-section">
+          <div class="chat-header">
+            <h3>💬 Chat</h3>
+          </div>
           <div id="chatMessages" class="chat-messages"></div>
           <form id="chatForm" class="chat-form">
             <input type="text" id="chatInput" placeholder="Ketik pesan..." autocomplete="off">
-            <button type="submit" class="btn btn-small">Kirim</button>
+            <button type="submit" class="btn btn-primary btn-small">Kirim</button>
           </form>
-        </div>
+        </section>
       </div>
     </main>
   </div>
@@ -98,20 +107,18 @@
     let isMuted = false;
     let localStream = null;
     const peerConnections = {};
-    const iceCandidates = [];
+    const roomUsers = [];
     
     // Elements
     const roomNameEl = document.getElementById('roomName');
     const roomCodeDisplayEl = document.getElementById('roomCodeDisplay');
     const hostBadgeEl = document.getElementById('hostBadge');
-    const videoContainerEl = document.getElementById('videoContainer');
-    const playerPlaceholderEl = document.getElementById('playerPlaceholder');
-    const youtubePlayerEl = document.getElementById('youtubePlayer');
     const videoInputEl = document.getElementById('videoInput');
     const videoControlsEl = document.getElementById('videoControls');
-    const voiceUsersEl = document.getElementById('voiceUsers');
-    const voiceStatusEl = document.getElementById('voiceStatus');
-    const userListEl = document.getElementById('userList');
+    const playerPlaceholderEl = document.getElementById('playerPlaceholder');
+    const voiceGridEl = document.getElementById('voiceGrid');
+    const voiceStatusTextEl = document.getElementById('voiceStatusText');
+    const statusIndicatorEl = document.getElementById('statusIndicator');
     const userCountEl = document.getElementById('userCount');
     const chatMessagesEl = document.getElementById('chatMessages');
     const chatFormEl = document.getElementById('chatForm');
@@ -137,7 +144,7 @@
         videoControlsEl.classList.remove('hidden');
       }
       
-      updateUserList(data.users);
+      updateUsersList(data.users);
       
       if (data.videoUrl) {
         loadYouTubeVideo(data.videoUrl, data.videoState);
@@ -145,13 +152,13 @@
     });
     
     socket.on('user-joined', (data) => {
-      updateUserList(data.users);
-      addChatMessage('System', `${data.username} bergabung`);
+      updateUsersList(data.users);
+      addChatMessage(null, `${data.username} bergabung`, true);
     });
     
     socket.on('user-left', (data) => {
-      updateUserList(data.users);
-      addChatMessage('System', `${data.username} keluar`);
+      updateUsersList(data.users);
+      addChatMessage(null, `${data.username} keluar`, true);
     });
     
     socket.on('host-changed', (data) => {
@@ -160,7 +167,7 @@
         hostBadgeEl.classList.remove('hidden');
         videoInputEl.classList.remove('hidden');
         videoControlsEl.classList.remove('hidden');
-        addChatMessage('System', 'Kamu sekarang adalah host');
+        addChatMessage(null, 'Kamu sekarang adalah host', true);
       }
     });
     
@@ -183,7 +190,7 @@
     });
     
     socket.on('chat-message', (data) => {
-      addChatMessage(data.username, data.message, data.time);
+      addChatMessage(data.username, data.message, false, data.time);
     });
     
     // Voice chat signaling
@@ -348,34 +355,62 @@
       }
     });
     
-    function addChatMessage(sender, message, time = null) {
+    function addChatMessage(sender, message, isSystem = false, time = null) {
       const msgEl = document.createElement('div');
-      msgEl.className = 'chat-message';
-      msgEl.innerHTML = `
-        <span class="chat-sender">${sender}</span>
-        <span class="chat-text">${message}</span>
-        ${time ? `<span class="chat-time">${time}</span>` : ''}
-      `;
+      msgEl.className = 'chat-message' + (isSystem ? ' system' : '');
+      
+      if (isSystem) {
+        msgEl.innerHTML = `<span class="chat-text">${message}</span>`;
+      } else {
+        msgEl.innerHTML = `
+          <div class="chat-message-header">
+            <span class="chat-sender">${sender}</span>
+            ${time ? `<span class="chat-time">${time}</span>` : ''}
+          </div>
+          <span class="chat-text">${message}</span>
+        `;
+      }
+      
       chatMessagesEl.appendChild(msgEl);
       chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
     }
     
-    function updateUserList(users) {
+    // Update users list with avatar cards
+    function updateUsersList(users) {
+      roomUsers.length = 0;
+      roomUsers.push(...users);
+      
       userCountEl.textContent = users.length;
-      userListEl.innerHTML = users.map(u => `
-        <li class="${u === username ? 'you' : ''}">${u} ${u === username ? '(Kamu)' : ''}</li>
-      `).join('');
+      
+      voiceGridEl.innerHTML = users.map(u => {
+        const initial = u.charAt(0).toUpperCase();
+        const isYou = u === username;
+        return `
+          <div class="voice-user-card ${isYou ? 'you' : ''}" id="voice-${u}">
+            <div class="voice-avatar">
+              ${initial}
+              <span class="mic-status ${isMuted && isYou ? 'muted' : ''}" id="mic-${u}">
+                ${isMuted && isYou ? '🔇' : '🎤'}
+              </span>
+            </div>
+            <span class="voice-name ${isYou ? 'you' : ''}">${isYou ? 'Kamu' : u}</span>
+          </div>
+        `;
+      }).join('');
     }
     
     // Voice Chat with WebRTC
     async function initVoiceChat() {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        voiceStatusEl.innerHTML = '<span class="status-dot connected"></span><span>Voice aktif</span>';
+        voiceStatusTextEl.textContent = 'Voice aktif';
+        statusIndicatorEl.classList.remove('connecting', 'error');
         socket.emit('voice-join', { roomCode, username });
       } catch (err) {
         console.error('Microphone access denied:', err);
-        voiceStatusEl.innerHTML = '<span class="status-dot error"></span><span>Mic tidak diizinkan</span>';
+        voiceStatusTextEl.textContent = 'Mic tidak diizinkan';
+        statusIndicatorEl.classList.add('error');
+        statusIndicatorEl.classList.remove('connecting');
       }
     }
     
@@ -390,25 +425,20 @@
       const pc = new RTCPeerConnection(config);
       peerConnections[remoteSocketId] = pc;
       
-      // Add local tracks
       if (localStream) {
         localStream.getTracks().forEach(track => {
           pc.addTrack(track, localStream);
         });
       }
       
-      // Handle remote stream
       pc.ontrack = (event) => {
         const audio = document.createElement('audio');
         audio.id = `audio-${remoteSocketId}`;
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
         document.body.appendChild(audio);
-        
-        addVoiceUser(remoteUsername, remoteSocketId);
       };
       
-      // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit('voice-ice-candidate', {
@@ -477,16 +507,6 @@
       }
     }
     
-    function addVoiceUser(name, socketId) {
-      if (!document.getElementById(`voice-${socketId}`)) {
-        const el = document.createElement('div');
-        el.id = `voice-${socketId}`;
-        el.className = 'voice-user';
-        el.textContent = `🎤 ${name}`;
-        voiceUsersEl.appendChild(el);
-      }
-    }
-    
     // Mute/Unmute
     micBtnEl.addEventListener('click', () => {
       if (localStream) {
@@ -495,7 +515,15 @@
           isMuted = !isMuted;
           audioTrack.enabled = !isMuted;
           micBtnEl.classList.toggle('muted', isMuted);
-          micBtnEl.querySelector('.mic-icon').textContent = isMuted ? '🔇' : '🎤';
+          micBtnEl.classList.toggle('active', !isMuted);
+          micBtnEl.textContent = isMuted ? '🔇' : '🎤';
+          
+          // Update mic status in grid
+          const micStatus = document.getElementById(`mic-${username}`);
+          if (micStatus) {
+            micStatus.classList.toggle('muted', isMuted);
+            micStatus.textContent = isMuted ? '🔇' : '🎤';
+          }
         }
       }
     });
