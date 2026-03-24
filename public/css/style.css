@@ -701,6 +701,53 @@ input::placeholder {
   border-color: var(--danger);
 }
 
+/* Mic Permission Help Panel */
+.mic-help-panel {
+  margin-top: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.mic-help-content h4 {
+  font-size: 13px;
+  color: var(--danger);
+  margin-bottom: 8px;
+}
+
+.mic-help-content p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.mic-help-content ol {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 16px;
+  margin-bottom: 10px;
+}
+
+.mic-help-content ol li {
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.mic-help-content ol li strong {
+  color: var(--text);
+}
+
+.status-indicator.connected {
+  background: var(--success);
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Chat Section */
 .chat-section {
   flex: 1;

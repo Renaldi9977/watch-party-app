@@ -60,11 +60,29 @@
           <div class="voice-status-bar">
             <div class="voice-status-text">
               <span class="status-indicator" id="statusIndicator"></span>
-              <span id="voiceStatusText">Voice aktif</span>
+              <span id="voiceStatusText">Mengaktifkan voice...</span>
             </div>
             <div class="voice-controls">
-              <button id="micBtn" class="voice-btn active" title="Microphone">
+              <button id="micBtn" class="voice-btn" title="Microphone" style="display: none;">
                 🎤
+              </button>
+              <button id="retryMicBtn" class="btn btn-small btn-primary" style="display: none;">
+                🔄 Izinkan Mic
+              </button>
+            </div>
+          </div>
+
+          <!-- Mic Permission Help -->
+          <div id="micHelpPanel" class="mic-help-panel" style="display: none;">
+            <div class="mic-help-content">
+              <h4>❌ Microphone Tidak Diizinkan</h4>
+              <p>Untuk menggunakan voice chat, izinkan akses microphone:</p>
+              <ol>
+                <li><strong>Jika di Browser:</strong> Klik tombol "Izinkan Mic" di atas, atau klik ikon gembok/info di address bar browser</li>
+                <li><strong>Jika di Aplikasi APK:</strong> Buka Pengaturan HP → Aplikasi → Watch Party → Permissions → Microphone → Izinkan</li>
+              </ol>
+              <button id="openSettingsBtn" class="btn btn-small btn-secondary" style="display: none;">
+                ⚙️ Buka Pengaturan
               </button>
             </div>
           </div>
@@ -125,6 +143,18 @@
     const chatFormEl = document.getElementById('chatForm');
     const chatInputEl = document.getElementById('chatInput');
     const micBtnEl = document.getElementById('micBtn');
+    const retryMicBtnEl = document.getElementById('retryMicBtn');
+    const micHelpPanelEl = document.getElementById('micHelpPanel');
+    const openSettingsBtnEl = document.getElementById('openSettingsBtn');
+    
+    // Detect if running in WebView/APK
+    const isWebView = (() => {
+      const ua = navigator.userAgent.toLowerCase();
+      return ua.indexOf('wv') > -1 || 
+             ua.indexOf('android') > -1 && ua.indexOf('version/') > -1 ||
+             window.webkit?.messageHandlers ||
+             typeof window.AndroidInterface !== 'undefined';
+    })();
     
     // Initialize Socket.IO
     socket = io();
@@ -410,6 +440,23 @@
     // Voice Chat with WebRTC - Optimized for clear audio
     async function initVoiceChat() {
       try {
+        // Check if permissions API is available
+        if (navigator.permissions) {
+          const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+          
+          if (permissionStatus.state === 'denied') {
+            showMicDeniedHelp();
+            return;
+          }
+          
+          // Listen for permission changes
+          permissionStatus.addEventListener('change', () => {
+            if (permissionStatus.state === 'granted') {
+              initVoiceChat();
+            }
+          });
+        }
+        
         // Request high quality audio with noise suppression
         localStream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
@@ -421,16 +468,74 @@
           }, 
           video: false 
         });
+        
+        // Success - show mic button
         voiceStatusTextEl.textContent = 'Voice aktif';
         statusIndicatorEl.classList.remove('connecting', 'error');
+        statusIndicatorEl.classList.add('connected');
+        micBtnEl.style.display = 'inline-flex';
+        micBtnEl.classList.add('active');
+        retryMicBtnEl.style.display = 'none';
+        micHelpPanelEl.style.display = 'none';
+        
         socket.emit('voice-join', { roomCode, username });
+        
       } catch (err) {
-        console.error('Microphone access denied:', err);
-        voiceStatusTextEl.textContent = 'Mic tidak diizinkan';
-        statusIndicatorEl.classList.add('error');
-        statusIndicatorEl.classList.remove('connecting');
+        console.error('Microphone access error:', err);
+        
+        // Handle different error types
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          showMicDeniedHelp();
+        } else if (err.name === 'NotFoundError') {
+          voiceStatusTextEl.textContent = 'Mic tidak ditemukan';
+          statusIndicatorEl.classList.add('error');
+        } else {
+          voiceStatusTextEl.textContent = 'Error: ' + err.message;
+          statusIndicatorEl.classList.add('error');
+        }
       }
     }
+    
+    function showMicDeniedHelp() {
+      voiceStatusTextEl.textContent = 'Mic tidak diizinkan';
+      statusIndicatorEl.classList.add('error');
+      statusIndicatorEl.classList.remove('connecting', 'connected');
+      
+      // Show retry button
+      retryMicBtnEl.style.display = 'inline-flex';
+      micBtnEl.style.display = 'none';
+      
+      // Show help panel
+      micHelpPanelEl.style.display = 'block';
+      
+      // If in WebView/APK, show settings button
+      if (isWebView) {
+        openSettingsBtnEl.style.display = 'inline-flex';
+        voiceStatusTextEl.textContent = 'Mic tidak diizinkan (APK)';
+      }
+    }
+    
+    // Retry microphone permission
+    retryMicBtnEl.addEventListener('click', async () => {
+      voiceStatusTextEl.textContent = 'Meminta izin...';
+      statusIndicatorEl.classList.add('connecting');
+      statusIndicatorEl.classList.remove('error');
+      retryMicBtnEl.disabled = true;
+      
+      await initVoiceChat();
+      
+      retryMicBtnEl.disabled = false;
+    });
+    
+    // Open app settings (Android only, may not work in all WebView)
+    openSettingsBtnEl.addEventListener('click', () => {
+      // Try to open Android app settings
+      if (typeof window.openAppSettings === 'function') {
+        window.openAppSettings();
+      } else {
+        alert('Buka manual: Pengaturan → Aplikasi → Watch Party → Permissions → Microphone');
+      }
+    });
     
     // Create audio element for voice chat (separate from video)
     function createVoiceAudioElement(socketId, stream) {
